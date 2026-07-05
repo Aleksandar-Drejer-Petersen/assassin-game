@@ -40,6 +40,7 @@ export function GameSetup({
   const studentsRef = useRef<HTMLFormElement>(null)
 
   const [alternate, setAlternate] = useState(false)
+  const [confirming, setConfirming] = useState(false)
   const [result, setResult] = useState<AssignResult | null>(null)
   const [isPending, startTransition] = useTransition()
 
@@ -48,13 +49,8 @@ export function GameSetup({
   const enoughLoc = locCount >= n
   const enoughWpn = wpnCount >= n
 
-  function onBuild() {
-    if (
-      !window.confirm(
-        "Build a new kill chain? This resets the game — the kill log is cleared and everyone is set back to alive. You can undo it from the History tab.",
-      )
-    )
-      return
+  function runBuild() {
+    setConfirming(false)
     const fd = new FormData()
     fd.set("alternate", alternate ? "true" : "false")
     startTransition(async () => {
@@ -161,9 +157,26 @@ export function GameSetup({
             </span>
           </label>
 
-          <Button type="button" onClick={onBuild} disabled={isPending} className="w-full">
-            {isPending ? "Building…" : "Auto-assign & build chain"}
-          </Button>
+          {!confirming ? (
+            <Button type="button" onClick={() => setConfirming(true)} disabled={isPending} className="w-full">
+              {isPending ? "Building…" : "Auto-assign & build chain"}
+            </Button>
+          ) : (
+            <div className="flex flex-col gap-3 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3">
+              <p className="flex items-start gap-2 text-sm text-amber-400">
+                <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+                This resets the game — the kill log is cleared and everyone is set back to alive. You can undo it from the History tab.
+              </p>
+              <div className="flex gap-2">
+                <Button type="button" onClick={runBuild} disabled={isPending} className="flex-1">
+                  {isPending ? "Building…" : "Yes, build the chain"}
+                </Button>
+                <Button type="button" variant="outline" onClick={() => setConfirming(false)} disabled={isPending}>
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          )}
 
           {result && !result.ok && (
             <div className="flex items-start gap-2 rounded-lg border border-primary/40 bg-primary/10 p-3 text-sm text-primary">
