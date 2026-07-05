@@ -53,6 +53,11 @@ export function KillFeed({ kills }: { kills: KillFeedItem[] }) {
                     </span>
                   ) : null}
                 </div>
+                {k.notes ? (
+                  <p className="mt-2 border-l-2 border-primary/40 pl-3 text-sm italic text-foreground/80">
+                    “{k.notes}”
+                  </p>
+                ) : null}
               </li>
             ))}
           </ol>

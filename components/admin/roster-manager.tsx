@@ -82,6 +82,19 @@ function PlayerRowItem({ player, players }: { player: PlayerRow; players: Player
           <Input name="item" defaultValue={player.item ?? ""} />
         </div>
         <div className="flex flex-col gap-1.5">
+          <Label className="text-xs">Gender</Label>
+          <Select name="gender" defaultValue={player.gender ?? "none"}>
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="none">Unspecified</SelectItem>
+              <SelectItem value="M">Boy</SelectItem>
+              <SelectItem value="F">Girl</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="flex flex-col gap-1.5">
           <Label className="text-xs">Status</Label>
           <Select name="alive" defaultValue={player.alive ? "true" : "false"}>
             <SelectTrigger>
@@ -183,6 +196,19 @@ export function RosterManager({ players }: { players: PlayerRow[] }) {
             <div className="flex flex-col gap-2">
               <Label htmlFor="p-item">Item</Label>
               <Input id="p-item" name="item" placeholder="e.g. rubber duck" />
+            </div>
+            <div className="flex flex-col gap-2">
+              <Label>Gender</Label>
+              <Select name="gender" defaultValue="none">
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Unspecified</SelectItem>
+                  <SelectItem value="M">Boy</SelectItem>
+                  <SelectItem value="F">Girl</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
             <div className="sm:col-span-2">
               <Button type="submit" className="w-full">

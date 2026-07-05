@@ -2,7 +2,7 @@
 
 import { db, pool } from "@/lib/db"
 import { ensureSchema } from "@/lib/db/ensure"
-import { players, kills, snapshots } from "@/lib/db/schema"
+import { players, kills, snapshots, settings } from "@/lib/db/schema"
 import { eq } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { redirect } from "next/navigation"
@@ -12,6 +12,7 @@ import {
   destroySession,
   isAuthenticated,
 } from "@/lib/auth"
+import { buildOrder, normalizeGender, shuffle, type ChainPerson } from "@/lib/chain"
 
 async function requireAdmin() {
   if (!(await isAuthenticated())) {
@@ -58,9 +59,49 @@ export async function addPlayer(formData: FormData) {
   const targetId = targetRaw ? Number(targetRaw) : null
   const location = String(formData.get("location") ?? "").trim() || null
   const item = String(formData.get("item") ?? "").trim() || null
+  const gender = normalizeGender(String(formData.get("gender") ?? ""))
 
   await captureSnapshot(`Add player "${name}"`)
-  await db.insert(players).values({ name, targetId, location, item })
+  await db.insert(players).values({ name, targetId, location, item, gender })
+  revalidatePath("/admin")
+  revalidatePath("/")
+}
+
+/** Add many players at once from a pasted list ("Name" or "Name, M/F" per line). */
+export async function bulkAddPlayers(formData: FormData) {
+  await requireAdmin()
+  await ensureSchema()
+  const raw = String(formData.get("names") ?? "")
+  const lines = raw
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(Boolean)
+  if (lines.length === 0) return
+
+  const existing = await db.select().from(players)
+  const existingNames = new Set(existing.map((p) => p.name.toLowerCase()))
+
+  const toInsert: { name: string; gender: string | null }[] = []
+  for (const line of lines) {
+    // Split on comma / tab / semicolon: "Alex, F" or "Alex	boy"
+    const parts = line.split(/[,;\t]/).map((s) => s.trim())
+    const name = parts[0]
+    if (!name) continue
+    const gender = normalizeGender(parts[1] ?? "")
+    const key = name.toLowerCase()
+    if (existingNames.has(key)) {
+      // Update gender on an existing player if the paste specifies one.
+      if (gender) await db.update(players).set({ gender }).where(eq(players.name, name))
+      continue
+    }
+    existingNames.add(key)
+    toInsert.push({ name, gender })
+  }
+
+  if (toInsert.length > 0) {
+    await captureSnapshot(`Add ${toInsert.length} players`)
+    await db.insert(players).values(toInsert)
+  }
   revalidatePath("/admin")
   revalidatePath("/")
 }
@@ -74,6 +115,7 @@ export async function updatePlayer(formData: FormData) {
   const location = String(formData.get("location") ?? "").trim() || null
   const item = String(formData.get("item") ?? "").trim() || null
   const alive = String(formData.get("alive") ?? "true") === "true"
+  const gender = normalizeGender(String(formData.get("gender") ?? ""))
 
   await captureSnapshot(`Edit player "${name}"`)
   await db
@@ -83,6 +125,7 @@ export async function updatePlayer(formData: FormData) {
       targetId,
       location,
       item,
+      gender,
       alive,
       eliminatedAt: alive ? null : new Date(),
     })
@@ -110,6 +153,7 @@ export async function recordKill(formData: FormData) {
   const location = String(formData.get("location") ?? "").trim() || null
   const activity = String(formData.get("activity") ?? "").trim() || null
   const witness = String(formData.get("witness") ?? "").trim() || null
+  const notes = String(formData.get("notes") ?? "").trim() || null
 
   if (!killerId || !victimId || killerId === victimId) return
 
@@ -127,6 +171,7 @@ export async function recordKill(formData: FormData) {
     location,
     activity,
     witness,
+    notes,
   })
 
   // Victim is eliminated.
@@ -158,11 +203,12 @@ export async function updateKill(formData: FormData) {
   const location = String(formData.get("location") ?? "").trim() || null
   const activity = String(formData.get("activity") ?? "").trim() || null
   const witness = String(formData.get("witness") ?? "").trim() || null
+  const notes = String(formData.get("notes") ?? "").trim() || null
 
   await captureSnapshot(`Edit kill #${id}`)
   await db
     .update(kills)
-    .set({ item, location, activity, witness })
+    .set({ item, location, activity, witness, notes })
     .where(eq(kills.id, id))
   revalidatePath("/admin")
   revalidatePath("/")
@@ -232,4 +278,120 @@ export async function rollbackTo(formData: FormData) {
 
   revalidatePath("/admin")
   revalidatePath("/")
+}
+
+// ---------- Setup: pools & chain assignment ----------
+
+/** Parse a textarea into a trimmed, de-duplicated list of lines. */
+function parseList(raw: string): string[] {
+  const seen = new Set<string>()
+  const out: string[] = []
+  for (const line of raw.split("\n")) {
+    const v = line.trim()
+    if (!v) continue
+    const key = v.toLowerCase()
+    if (seen.has(key)) continue
+    seen.add(key)
+    out.push(v)
+  }
+  return out
+}
+
+async function upsertSetting(key: string, value: unknown) {
+  await db
+    .insert(settings)
+    .values({ key, value })
+    .onConflictDoUpdate({ target: settings.key, set: { value } })
+}
+
+/** Save the pools of locations and weapons the chain draws from. */
+export async function savePools(formData: FormData) {
+  await requireAdmin()
+  await ensureSchema()
+  const locations = parseList(String(formData.get("locations") ?? ""))
+  const weapons = parseList(String(formData.get("weapons") ?? ""))
+  await upsertSetting("locations", locations)
+  await upsertSetting("weapons", weapons)
+  revalidatePath("/admin")
+  return { ok: true as const, locations: locations.length, weapons: weapons.length }
+}
+
+export type AssignResult =
+  | { ok: true; warning: string | null }
+  | { ok: false; error: string }
+
+/**
+ * Auto-assign a location + weapon to every player and wire them into ONE
+ * continuous circle. Optionally alternate genders around the loop. Resets the
+ * game (clears the kill log, everyone back to alive); a snapshot is taken first
+ * so it can be undone from History.
+ */
+export async function assignChain(formData: FormData): Promise<AssignResult> {
+  await requireAdmin()
+  await ensureSchema()
+
+  const alternate =
+    String(formData.get("alternate") ?? "") === "true" ||
+    String(formData.get("alternate") ?? "") === "on"
+
+  const [roster, locRow, wpnRow] = await Promise.all([
+    db.select().from(players),
+    db.select().from(settings).where(eq(settings.key, "locations")),
+    db.select().from(settings).where(eq(settings.key, "weapons")),
+  ])
+
+  const locations = Array.isArray(locRow[0]?.value)
+    ? (locRow[0]!.value as unknown[]).filter((x): x is string => typeof x === "string")
+    : []
+  const weapons = Array.isArray(wpnRow[0]?.value)
+    ? (wpnRow[0]!.value as unknown[]).filter((x): x is string => typeof x === "string")
+    : []
+
+  const n = roster.length
+  if (n < 2) {
+    return { ok: false, error: "Add at least 2 players before building the chain." }
+  }
+
+  const missing: string[] = []
+  if (locations.length < n) missing.push(`${n - locations.length} more location${n - locations.length === 1 ? "" : "s"}`)
+  if (weapons.length < n) missing.push(`${n - weapons.length} more weapon${n - weapons.length === 1 ? "" : "s"}`)
+  if (missing.length > 0) {
+    return {
+      ok: false,
+      error: `You have ${n} players, so you need at least ${n} locations and ${n} weapons. Add ${missing.join(" and ")}.`,
+    }
+  }
+
+  const people: ChainPerson[] = roster.map((p) => ({ id: p.id, name: p.name, gender: p.gender }))
+  const { order, genderWarning } = buildOrder(people, alternate)
+  const pickedLocations = shuffle(locations).slice(0, n)
+  const pickedWeapons = shuffle(weapons).slice(0, n)
+
+  await captureSnapshot("Build kill chain")
+
+  const client = await pool.connect()
+  try {
+    await client.query("BEGIN")
+    await client.query("DELETE FROM kills")
+    for (let i = 0; i < order.length; i++) {
+      const person = order[i]
+      const target = order[(i + 1) % order.length]
+      await client.query(
+        `UPDATE players
+           SET target_id = $1, location = $2, item = $3, alive = true, eliminated_at = NULL
+         WHERE id = $4`,
+        [target.id, pickedLocations[i], pickedWeapons[i], person.id],
+      )
+    }
+    await client.query("COMMIT")
+  } catch (err) {
+    await client.query("ROLLBACK")
+    throw err
+  } finally {
+    client.release()
+  }
+
+  revalidatePath("/admin")
+  revalidatePath("/")
+  return { ok: true, warning: genderWarning }
 }

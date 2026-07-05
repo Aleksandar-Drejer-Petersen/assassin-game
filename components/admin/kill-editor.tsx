@@ -31,16 +31,17 @@ function KillItem({ kill }: { kill: KillFeedItem }) {
           <Input name="item" defaultValue={kill.item ?? ""} />
         </div>
         <div className="flex flex-col gap-1.5">
-          <Label className="text-xs">Location</Label>
+          <Label className="text-xs">Location / situation</Label>
           <Input name="location" defaultValue={kill.location ?? ""} />
-        </div>
-        <div className="flex flex-col gap-1.5">
-          <Label className="text-xs">Activity</Label>
-          <Input name="activity" defaultValue={kill.activity ?? ""} />
         </div>
         <div className="flex flex-col gap-1.5">
           <Label className="text-xs">Witness</Label>
           <Input name="witness" defaultValue={kill.witness ?? ""} />
+        </div>
+        <input type="hidden" name="activity" value={kill.activity ?? ""} />
+        <div className="flex flex-col gap-1.5 sm:col-span-2">
+          <Label className="text-xs">Notes (shown in the kill log)</Label>
+          <Input name="notes" defaultValue={kill.notes ?? ""} />
         </div>
         <div className="flex items-end gap-2 sm:col-span-2">
           <Button type="submit" size="sm">
@@ -65,6 +66,7 @@ function KillItem({ kill }: { kill: KillFeedItem }) {
           {[kill.item, kill.location, kill.activity].filter(Boolean).join(" · ") || "no details"}
           {kill.witness ? ` · witness: ${kill.witness}` : " · no witness"}
         </p>
+        {kill.notes ? <p className="mt-1 text-xs italic text-foreground/70">“{kill.notes}”</p> : null}
       </div>
       <Button type="button" size="icon" variant="ghost" onClick={() => setEditing(true)}>
         <Pencil className="size-4" />

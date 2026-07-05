@@ -88,18 +88,18 @@ export function RecordKillForm({ players }: { players: PlayerRow[] }) {
           </div>
 
           <div className="flex flex-col gap-2">
-            <Label htmlFor="k-location">Location</Label>
-            <Input id="k-location" name="location" placeholder="e.g. cafeteria" />
-          </div>
-
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="k-activity">Activity (optional)</Label>
-            <Input id="k-activity" name="activity" placeholder="e.g. eating lunch" />
+            <Label htmlFor="k-location">Location / situation</Label>
+            <Input id="k-location" name="location" placeholder="e.g. in the cafeteria, or while singing" />
           </div>
 
           <div className="flex flex-col gap-2">
             <Label htmlFor="k-witness">Witness</Label>
             <Input id="k-witness" name="witness" placeholder="Name (victim counts if they agree)" />
+          </div>
+
+          <div className="flex flex-col gap-2 sm:col-span-2">
+            <Label htmlFor="k-notes">Notes (optional)</Label>
+            <Input id="k-notes" name="notes" placeholder="A funny story — shown publicly in the kill log" />
           </div>
 
           <div className="sm:col-span-2">

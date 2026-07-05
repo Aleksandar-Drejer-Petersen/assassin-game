@@ -35,6 +35,15 @@ CREATE TABLE IF NOT EXISTS snapshots (
   state      jsonb NOT NULL,
   created_at timestamptz NOT NULL DEFAULT now()
 );
+
+CREATE TABLE IF NOT EXISTS settings (
+  key   text PRIMARY KEY,
+  value jsonb NOT NULL
+);
+
+-- Added after the first release; safe to run repeatedly.
+ALTER TABLE players ADD COLUMN IF NOT EXISTS gender text;
+ALTER TABLE kills ADD COLUMN IF NOT EXISTS notes text;
 `
 
 export function ensureSchema(): Promise<void> {

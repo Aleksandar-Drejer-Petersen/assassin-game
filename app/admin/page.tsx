@@ -1,6 +1,6 @@
 import { isAuthenticated } from "@/lib/auth"
 import { logout } from "@/app/actions/admin"
-import { getPlayers, getKillFeed, getSnapshots } from "@/lib/game"
+import { getPlayers, getKillFeed, getSnapshots, getPools, getChain } from "@/lib/game"
 import { LoginForm } from "@/components/admin/login-form"
 import { Dashboard } from "@/components/admin/dashboard"
 import { Button, buttonVariants } from "@/components/ui/button"
@@ -21,10 +21,12 @@ export default async function AdminPage() {
     )
   }
 
-  const [players, kills, snapshots] = await Promise.all([
+  const [players, kills, snapshots, pools, chain] = await Promise.all([
     getPlayers(),
     getKillFeed(),
     getSnapshots(),
+    getPools(),
+    getChain(),
   ])
 
   return (
@@ -59,7 +61,7 @@ export default async function AdminPage() {
         </div>
       </header>
 
-      <Dashboard players={players} kills={kills} snapshots={snapshots} />
+      <Dashboard players={players} kills={kills} snapshots={snapshots} pools={pools} chain={chain} />
     </main>
   )
 }
