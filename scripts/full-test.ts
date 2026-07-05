@@ -252,19 +252,19 @@ function recordKillMemory(
   state: GameState,
   input: {
     killerId: number
-    victimId: number
-    item?: string | null
-    location?: string | null
-    activity?: string | null
     witness?: string | null
     notes?: string | null
   },
 ) {
-  if (!input.killerId || !input.victimId || input.killerId === input.victimId) return null
+  if (!input.killerId) return null
 
-  const victim = state.players.find((p) => p.id === input.victimId)
-  if (!victim) return null
   const killer = playerById(state, input.killerId)
+  if (killer.targetId == null || killer.targetId === input.killerId) return null
+
+  const victim = state.players.find((p) => p.id === killer.targetId)
+  if (!victim) return null
+  const killerFormerLocation = killer.location
+  const killerFormerItem = killer.item
   const victimFormerTargetId = victim.targetId
   const victimFormerLocation = victim.location
   const victimFormerItem = victim.item
@@ -273,10 +273,10 @@ function recordKillMemory(
   const kill: KillRow = {
     id: state.nextKillId++,
     killerId: input.killerId,
-    victimId: input.victimId,
-    item: (input.item ?? "").trim() || null,
-    location: (input.location ?? "").trim() || null,
-    activity: (input.activity ?? "").trim() || null,
+    victimId: victim.id,
+    item: killerFormerItem,
+    location: killerFormerLocation,
+    activity: null,
     witness: (input.witness ?? "").trim() || null,
     notes: (input.notes ?? "").trim() || null,
     occurredAt,
@@ -466,18 +466,19 @@ function currentTargetKill(state: GameState, killerId: number) {
   assert(killer.alive, `${killer.name} is not alive`)
   assert(killer.targetId != null, `${killer.name} has no target`)
   const victim = playerById(state, killer.targetId)
+  const killerFormerItem = killer.item
+  const killerFormerLocation = killer.location
   const aliveBefore = state.players.filter((p) => p.alive).length
   const result = recordKillMemory(state, {
     killerId: killer.id,
-    victimId: victim.id,
-    item: killer.item,
-    location: killer.location,
     witness: `Witness ${state.kills.length + 1}`,
     notes: `Kill ${state.kills.length + 1}`,
   })
   assert(result, "recordKill returned null")
 
   assert(!victim.alive, "Victim should be dead")
+  assert(result.kill.item === killerFormerItem, "Kill logged wrong item")
+  assert(result.kill.location === killerFormerLocation, "Kill logged wrong location")
   assert(killer.targetId === (result.victimFormerTargetId === killer.id ? null : result.victimFormerTargetId), "Killer inherited wrong target")
   assert(killer.location === result.victimFormerLocation, "Killer inherited wrong location")
   assert(killer.item === result.victimFormerItem, "Killer inherited wrong item")

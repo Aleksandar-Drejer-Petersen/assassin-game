@@ -19,12 +19,13 @@ import { Crosshair } from "lucide-react"
 export function RecordKillForm({ players }: { players: PlayerRow[] }) {
   const formRef = useRef<HTMLFormElement>(null)
   const [killerId, setKillerId] = useState("")
-  const [victimId, setVictimId] = useState("")
   const onKiller = (v: string | null) => setKillerId(v ?? "")
-  const onVictim = (v: string | null) => setVictimId(v ?? "")
 
   const alive = players.filter((p) => p.alive)
-  const killerName = players.find((p) => String(p.id) === killerId)?.name
+  const killer = alive.find((p) => String(p.id) === killerId)
+  const killerName = killer?.name
+  const target = killer?.targetId != null ? players.find((p) => p.id === killer.targetId) : undefined
+  const canRecord = Boolean(killer && target)
 
   return (
     <Card>
@@ -34,7 +35,7 @@ export function RecordKillForm({ players }: { players: PlayerRow[] }) {
           Record a Kill
         </CardTitle>
         <CardDescription>
-          The killer inherits the victim&apos;s target, location, and item automatically.
+          Pick who made the kill - their target, weapon and location are filled in automatically.
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -44,15 +45,18 @@ export function RecordKillForm({ players }: { players: PlayerRow[] }) {
             await recordKill(fd)
             formRef.current?.reset()
             setKillerId("")
-            setVictimId("")
           }}
           className="grid gap-4 sm:grid-cols-2"
         >
-          <div className="flex flex-col gap-2">
+          <div className="flex flex-col gap-2 sm:col-span-2">
             <Label>Killer</Label>
             <Select value={killerId} onValueChange={onKiller} name="killerId" required>
               <SelectTrigger>
-                <SelectValue placeholder="Who made the kill?" />
+                <SelectValue placeholder="Who made the kill?">
+                  {(value: string) =>
+                    value ? players.find((p) => String(p.id) === value)?.name ?? null : null
+                  }
+                </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 {alive.map((p) => (
@@ -64,33 +68,19 @@ export function RecordKillForm({ players }: { players: PlayerRow[] }) {
             </Select>
           </div>
 
-          <div className="flex flex-col gap-2">
-            <Label>Victim</Label>
-            <Select value={victimId} onValueChange={onVictim} name="victimId" required>
-              <SelectTrigger>
-                <SelectValue placeholder="Who was eliminated?" />
-              </SelectTrigger>
-              <SelectContent>
-                {alive
-                  .filter((p) => String(p.id) !== killerId)
-                  .map((p) => (
-                    <SelectItem key={p.id} value={String(p.id)}>
-                      {p.name}
-                    </SelectItem>
-                  ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="k-item">Item used</Label>
-            <Input id="k-item" name="item" placeholder="e.g. spoon" />
-          </div>
-
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="k-location">Location / situation</Label>
-            <Input id="k-location" name="location" placeholder="e.g. in the cafeteria, or while singing" />
-          </div>
+          {killer && (
+            <div className="rounded-lg border border-border bg-muted/30 p-3 text-sm sm:col-span-2">
+              {target ? (
+                <p>
+                  → eliminates <b>{target.name}</b>
+                  {killer.item ? ` · ${killer.item}` : ""}
+                  {killer.location ? ` @ ${killer.location}` : ""}
+                </p>
+              ) : (
+                <p>→ no current target (already won, or the chain isn&apos;t built yet)</p>
+              )}
+            </div>
+          )}
 
           <div className="flex flex-col gap-2">
             <Label htmlFor="k-witness">Witness</Label>
@@ -103,7 +93,7 @@ export function RecordKillForm({ players }: { players: PlayerRow[] }) {
           </div>
 
           <div className="sm:col-span-2">
-            <Button type="submit" className="w-full" disabled={!killerId || !victimId}>
+            <Button type="submit" className="w-full" disabled={!canRecord}>
               {killerName ? `Confirm ${killerName}'s kill` : "Record kill"}
             </Button>
           </div>

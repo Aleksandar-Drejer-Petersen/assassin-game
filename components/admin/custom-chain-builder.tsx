@@ -6,6 +6,7 @@ import { assignCustomChain, type AssignResult } from "@/app/actions/admin"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { buildOrder, shuffle } from "@/lib/chain"
 import { cn } from "@/lib/utils"
 import type { PlayerRow } from "@/lib/game"
 import { AlertTriangle, ArrowDown, ArrowUp, CheckCircle2, GripVertical } from "lucide-react"
@@ -40,6 +41,7 @@ export function CustomChainBuilder({
   const [order, setOrder] = useState<PlayerRow[]>(players)
   const [dragIndex, setDragIndex] = useState<number | null>(null)
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null)
+  const [alternate, setAlternate] = useState(false)
   const [confirming, setConfirming] = useState(false)
   const [result, setResult] = useState<AssignResult | null>(null)
   const [isPending, startTransition] = useTransition()
@@ -72,6 +74,20 @@ export function CustomChainBuilder({
     setResult(null)
   }
 
+  function randomizeOrder() {
+    if (alternate) {
+      const res = buildOrder(
+        players.map((p) => ({ id: p.id, name: p.name, gender: p.gender })),
+        true,
+      )
+      setOrder(res.order.map((p) => playersById.get(p.id)).filter((p): p is PlayerRow => Boolean(p)))
+    } else {
+      setOrder(shuffle(players))
+    }
+    setConfirming(false)
+    setResult(null)
+  }
+
   function runBuild() {
     setConfirming(false)
     const fd = new FormData()
@@ -92,6 +108,23 @@ export function CustomChainBuilder({
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
+        <div className="flex flex-col gap-3">
+          <label className="flex items-center gap-3 rounded-lg border border-border p-3 text-sm">
+            <input
+              type="checkbox"
+              checked={alternate}
+              onChange={(e) => setAlternate(e.target.checked)}
+              className="size-4 accent-primary"
+            />
+            <span>
+              <span className="font-medium">Alternate boy/girl</span>
+            </span>
+          </label>
+          <Button type="button" variant="outline" onClick={randomizeOrder} disabled={isPending || players.length < 2}>
+            Randomize
+          </Button>
+        </div>
+
         {order.length === 0 ? (
           <p className="text-sm text-muted-foreground">Add students first, then arrange the custom chain here.</p>
         ) : (

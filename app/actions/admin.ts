@@ -147,29 +147,33 @@ export async function deletePlayer(formData: FormData) {
 
 export async function recordKill(formData: FormData) {
   await requireAdmin()
+  await ensureSchema()
   const killerId = Number(formData.get("killerId"))
-  const victimId = Number(formData.get("victimId"))
-  const item = String(formData.get("item") ?? "").trim() || null
-  const location = String(formData.get("location") ?? "").trim() || null
-  const activity = String(formData.get("activity") ?? "").trim() || null
   const witness = String(formData.get("witness") ?? "").trim() || null
   const notes = String(formData.get("notes") ?? "").trim() || null
+  if (!killerId) return
 
-  if (!killerId || !victimId || killerId === victimId) return
+  // The kill is fully determined by the killer's current mission: their target
+  // is the victim, and the weapon/location they were assigned is what was used.
+  const [killer] = await db.select().from(players).where(eq(players.id, killerId))
+  if (!killer || !killer.alive) return
+  const victimId = killer.targetId
+  if (!victimId || victimId === killerId) return // killer has no live target
 
-  await ensureSchema()
   const [victim] = await db.select().from(players).where(eq(players.id, victimId))
   if (!victim) return
 
+  const item = killer.item
+  const location = killer.location
+
   await captureSnapshot("Record kill")
 
-  // Log the kill.
+  // Log the kill using the mission the killer was carrying.
   await db.insert(kills).values({
     killerId,
     victimId,
     item,
     location,
-    activity,
     witness,
     notes,
   })

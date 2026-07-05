@@ -6,7 +6,7 @@
 6. Gender clashes: 0; warning produced - PASS
 7. Record kills: 20 kills; 17 alive; loop intact after each - PASS
 8. Edit log: kill #11 item/location/notes visible - PASS
-9. Delete log: killer #1 score 6->5; total 20->19 - PASS
-10. Endgame: last standing Adrian Brooks; most kills Adrian Brooks (21) - PASS
+9. Delete log: killer #1 score 3->2; total 20->19 - PASS
+10. Endgame: last standing Adrian Brooks; most kills Adrian Brooks (18) - PASS
 
 No bugs found.
