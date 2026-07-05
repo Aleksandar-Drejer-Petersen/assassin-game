@@ -62,23 +62,29 @@ export function buildOrder(people: readonly ChainPerson[], alternate: boolean): 
     if (i < small.length) order.push(small[i])
   }
 
-  // Count same-gender neighbours around the closed loop (only real M/F count).
-  let clashes = 0
+  // A hand-off around the loop is "clean" only when it goes boy→girl or
+  // girl→boy. Anything else breaks the alternation — same gender back-to-back,
+  // OR a player with no gender set — so count all of those. (Counting only real
+  // M/F clashes missed rosters where "unspecified" players sat at the seam,
+  // making the warning luck-dependent.)
+  let imperfect = 0
   for (let i = 0; i < order.length; i++) {
     const a = normalizeGender(order[i].gender)
     const b = normalizeGender(order[(i + 1) % order.length].gender)
-    if (a && b && a === b) clashes++
+    const cleanPair = (a === "M" && b === "F") || (a === "F" && b === "M")
+    if (!cleanPair) imperfect++
   }
 
   const nBoys = people.filter((p) => normalizeGender(p.gender) === "M").length
   const nGirls = people.filter((p) => normalizeGender(p.gender) === "F").length
   let genderWarning: string | null = null
-  if (clashes > 0) {
+  if (imperfect > 0) {
     genderWarning =
-      `Couldn't perfectly alternate genders (${nBoys} boys, ${nGirls} girls` +
-      `${unknown.length ? `, ${unknown.length} unspecified` : ""}). ` +
-      `${clashes} spot${clashes === 1 ? "" : "s"} in the circle put the same gender back-to-back. ` +
-      `Perfect alternation needs an equal number of boys and girls.`
+      `Couldn't perfectly alternate boy↔girl (${nBoys} boys, ${nGirls} girls` +
+      `${unknown.length ? `, ${unknown.length} with no gender set` : ""}). ` +
+      `${imperfect} of the ${order.length} hand-off${imperfect === 1 ? "" : "s"} ` +
+      `${imperfect === 1 ? "isn't" : "aren't"} a boy→girl pair. ` +
+      `Perfect alternation needs an equal number of boys and girls, each with a gender set.`
   }
 
   return { order, genderWarning }
