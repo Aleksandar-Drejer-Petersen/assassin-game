@@ -1,5 +1,5 @@
 import { writeFileSync } from "node:fs"
-import { buildOrder, normalizeGender, shuffle, type ChainPerson } from "../lib/chain"
+import { buildOrder, distribute, normalizeGender, type ChainPerson } from "../lib/chain"
 
 type PlayerRow = {
   id: number
@@ -150,6 +150,18 @@ function playerById(state: GameState, id: number) {
   return player
 }
 
+function countsByValue<T>(items: T[]) {
+  const counts = new Map<T, number>()
+  for (const item of items) counts.set(item, (counts.get(item) ?? 0) + 1)
+  return counts
+}
+
+function minMax(values: Iterable<number>) {
+  const list = [...values]
+  assert(list.length > 0, "Expected at least one count")
+  return { min: Math.min(...list), max: Math.max(...list) }
+}
+
 // Mirrors app/actions/admin.ts assignChain.
 function assignChainMemory(
   state: GameState,
@@ -159,21 +171,17 @@ function assignChainMemory(
 ): { ok: true; warning: string | null } | { ok: false; error: string } {
   const n = state.players.length
   if (n < 2) return { ok: false, error: "Add at least 2 players before building the chain." }
-
-  const missing: string[] = []
-  if (poolLocations.length < n) missing.push(`${n - poolLocations.length} more location${n - poolLocations.length === 1 ? "" : "s"}`)
-  if (poolWeapons.length < n) missing.push(`${n - poolWeapons.length} more weapon${n - poolWeapons.length === 1 ? "" : "s"}`)
-  if (missing.length > 0) {
+  if (poolLocations.length === 0 || poolWeapons.length === 0) {
     return {
       ok: false,
-      error: `You have ${n} players, so you need at least ${n} locations and ${n} weapons. Add ${missing.join(" and ")}.`,
+      error: "Add at least one location/situation and one weapon before building the chain.",
     }
   }
 
   const people: ChainPerson[] = state.players.map((p) => ({ id: p.id, name: p.name, gender: p.gender }))
   const { order, genderWarning } = buildOrder(people, alternate)
-  const pickedLocations = shuffle(poolLocations).slice(0, n)
-  const pickedWeapons = shuffle(poolWeapons).slice(0, n)
+  const pickedLocations = distribute(poolLocations, n)
+  const pickedWeapons = distribute(poolWeapons, n)
 
   state.kills = []
   state.nextKillId = 1
@@ -192,6 +200,51 @@ function assignChainMemory(
   }
 
   return { ok: true, warning: genderWarning }
+}
+
+// Mirrors app/actions/admin.ts assignCustomChain.
+function assignCustomChainMemory(
+  state: GameState,
+  orderedIds: number[],
+  poolLocations: string[],
+  poolWeapons: string[],
+): { ok: true; warning: string | null } | { ok: false; error: string } {
+  const n = orderedIds.length
+  if (n < 2) return { ok: false, error: "Put at least 2 players in the order." }
+  if (new Set(orderedIds).size !== orderedIds.length) {
+    return { ok: false, error: "A player appears twice in the order." }
+  }
+
+  const rosterIds = new Set(state.players.map((p) => p.id))
+  if (n !== state.players.length || !orderedIds.every((id) => rosterIds.has(id))) {
+    return { ok: false, error: "The custom order must include every player exactly once." }
+  }
+  if (poolLocations.length === 0 || poolWeapons.length === 0) {
+    return {
+      ok: false,
+      error: "Add at least one location/situation and one weapon before building the chain.",
+    }
+  }
+
+  const pickedLocations = distribute(poolLocations, n)
+  const pickedWeapons = distribute(poolWeapons, n)
+
+  state.kills = []
+  state.nextKillId = 1
+  state.lastPickedLocations = pickedLocations
+  state.lastPickedWeapons = pickedWeapons
+  state.lastWarning = null
+
+  for (let i = 0; i < orderedIds.length; i++) {
+    const player = playerById(state, orderedIds[i])
+    player.targetId = orderedIds[(i + 1) % orderedIds.length]
+    player.location = pickedLocations[i]
+    player.item = pickedWeapons[i]
+    player.alive = true
+    player.eliminatedAt = null
+  }
+
+  return { ok: true, warning: null }
 }
 
 // Mirrors app/actions/admin.ts recordKill.
@@ -460,22 +513,59 @@ try {
   assert(new Set(state.players.map((p) => p.name)).size === 37, "Names must be distinct")
   note(results, 1, "Players", `${maleCount} male, ${femaleCount} female, ${unspecifiedCount} unspecified`)
 
-  const shortPools = assignChainMemory(state, locations(10), weapons(40), false)
-  assert(!shortPools.ok, "Expected short location pool to fail")
-  assert(shortPools.error.includes("27 more locations"), `Expected 27-location shortfall, got: ${shortPools.error}`)
-  assert(!shortPools.error.includes("more weapon"), `Unexpected weapon shortfall complaint: ${shortPools.error}`)
-  const built = assignChainMemory(state, locations(50), weapons(50), false)
-  assert(built.ok, "Expected build to succeed")
+  const tenLocations = locations(10)
+  const fortyWeapons = weapons(40)
+  const emptyPools = assignChainMemory(state, [], fortyWeapons, false)
+  if (!("error" in emptyPools)) throw new Error("Expected empty location pool to fail")
+  assert(emptyPools.error.includes("at least one location"), `Expected empty-pool guard, got: ${emptyPools.error}`)
+  const built = assignChainMemory(state, tenLocations, fortyWeapons, false)
+  assert(built.ok, "Expected short location pool build to succeed")
   assert(state.lastPickedLocations.length === 37, "Expected 37 picked locations")
   assert(state.lastPickedWeapons.length === 37, "Expected 37 picked weapons")
-  assert(new Set(state.lastPickedLocations).size === 37, "Expected unique picked locations")
-  assert(new Set(state.lastPickedWeapons).size === 37, "Expected unique picked weapons")
-  note(results, 2, "Validation and pools", "27 more locations; 37/50 locations and 37/50 weapons used")
+  assert(state.players.every((p) => p.location && p.item), "Every player needs location and item")
+  const locationCounts = countsByValue(state.lastPickedLocations)
+  const pickedWeaponCounts = countsByValue(state.lastPickedWeapons)
+  const allWeaponCounts = fortyWeapons.map((weapon) => pickedWeaponCounts.get(weapon) ?? 0)
+  const locationSpread = minMax(locationCounts.values())
+  const weaponSpread = minMax(allWeaponCounts)
+  assert(locationCounts.size === 10, "Expected all 10 locations to be used")
+  assert(locationSpread.min === 3 && locationSpread.max === 4, `Expected locations used 3-4 times, got ${locationSpread.min}-${locationSpread.max}`)
+  assert([...locationCounts.values()].filter((count) => count === 4).length === 7, "Expected 7 locations used 4 times")
+  assert([...locationCounts.values()].filter((count) => count === 3).length === 3, "Expected 3 locations used 3 times")
+  assert(pickedWeaponCounts.size === 37, "Expected 37 of 40 weapons to be used")
+  assert(weaponSpread.min === 0 && weaponSpread.max === 1, `Expected all weapons used 0-1 times, got ${weaponSpread.min}-${weaponSpread.max}`)
+  note(results, 2, "Validation and pools", "empty location pool blocked; 10 locations spread 3-4x; 37/40 weapons used once")
+
+  const distributed = distribute(locations(7), 37)
+  assert(distributed.length === 37, "Expected distribute(poolOf7, 37) length 37")
+  const distributedSpread = minMax(countsByValue(distributed).values())
+  assert(distributedSpread.min === 5 && distributedSpread.max === 6, `Expected distribute counts 5-6, got ${distributedSpread.min}-${distributedSpread.max}`)
+  assert(distributedSpread.max - distributedSpread.min <= 1, "Distribute counts differ by more than 1")
+  note(results, 3, "Distribute", `7-item pool over 37 picks -> counts ${distributedSpread.min}-${distributedSpread.max}`)
 
   const cycle = singleCycleMetrics(state)
   assert(cycle.steps === 37 && cycle.unique === 37 && cycle.closedToStart, "Expected exactly one 37-player cycle")
   assert(state.players.every((p) => p.location && p.item), "Every player needs location and item")
-  note(results, 3, "Single cycle", `${cycle.unique}/37 nodes, loop closed`)
+  note(results, 4, "Single cycle", `${cycle.unique}/37 nodes, loop closed`)
+
+  const customState = makeState()
+  const customOrder = customState.players.map((p) => p.id).reverse()
+  const customBuilt = assignCustomChainMemory(customState, customOrder, locations(10), weapons(40))
+  assert(customBuilt.ok, "Expected custom chain to succeed")
+  const walked: number[] = []
+  let currentId = customOrder[0]
+  for (let i = 0; i < customOrder.length; i++) {
+    walked.push(currentId)
+    const targetId = playerById(customState, currentId).targetId
+    assert(targetId != null, `Custom chain player #${currentId} has no target`)
+    currentId = targetId
+  }
+  assert(walked.every((id, index) => id === customOrder[index]), "Custom chain walk did not match explicit order")
+  assert(currentId === customOrder[0], "Custom chain did not close to the start")
+  assert(!assignCustomChainMemory(makeState(), [1, 1, ...customOrder.slice(2)], locations(10), weapons(40)).ok, "Expected duplicate id to be rejected")
+  assert(!assignCustomChainMemory(makeState(), customOrder.slice(1), locations(10), weapons(40)).ok, "Expected missing player to be rejected")
+  assert(!assignCustomChainMemory(makeState(), [1], locations(10), weapons(40)).ok, "Expected order length < 2 to be rejected")
+  note(results, 5, "Custom chain", "explicit 37-id cycle reproduced; duplicate, missing, and too-short orders rejected")
 
   const alternateState = makeState()
   const altBuilt = assignChainMemory(alternateState, locations(50), weapons(50), true)
@@ -486,10 +576,10 @@ try {
     bugs.push(
       "Gender alternation warning is missing for a 37-player odd roster with 18 M, 17 F, and 2 unspecified because real clash counting ignores null genders.",
     )
-    note(results, 4, "Gender clashes", `${clashes}; warning missing from real buildOrder`, false)
+    note(results, 6, "Gender clashes", `${clashes}; warning missing from real buildOrder`, false)
   } else {
     assert(clashes <= 2, `Expected small clash count, got ${clashes}`)
-    note(results, 4, "Gender clashes", `${clashes}; warning produced`)
+    note(results, 6, "Gender clashes", `${clashes}; warning produced`)
   }
 
   const killPlan = [1, 4, 8, 12, 16, 20, 24, 28, 32, 36, 2, 6, 10, 14, 18, 22, 26, 30, 34, 3]
@@ -499,7 +589,7 @@ try {
     assert(killer, "No eligible killer found")
     currentTargetKill(state, killer.id)
   }
-  note(results, 5, "Record kills", `${state.kills.length} kills; ${getStatsMemory(state).aliveCount} alive; loop intact after each`)
+  note(results, 7, "Record kills", `${state.kills.length} kills; ${getStatsMemory(state).aliveCount} alive; loop intact after each`)
 
   const editedKill = state.kills[Math.floor(state.kills.length / 2)]
   assert(editedKill, "Expected a kill to edit")
@@ -515,7 +605,7 @@ try {
   assert(feedItem.item === "Edited Umbrella", "Edited item missing from feed")
   assert(feedItem.location === "Edited Observatory", "Edited location missing from feed")
   assert(feedItem.notes === "Edited notes are visible in the public feed.", "Edited notes missing from feed")
-  note(results, 6, "Edit log", `kill #${editedKill.id} item/location/notes visible`)
+  note(results, 8, "Edit log", `kill #${editedKill.id} item/location/notes visible`)
 
   const deletedKill = state.kills[0]
   assert(deletedKill, "Expected a kill to delete")
@@ -527,7 +617,7 @@ try {
   assert(killerAfterDelete, "Deleted kill killer missing after delete")
   assert(killerAfterDelete.kills === killerBeforeDelete.kills - 1, "Killer score did not drop by 1")
   assert(getStatsMemory(state).totalKills === totalBeforeDelete - 1, "Total kills did not drop by 1")
-  note(results, 7, "Delete log", `killer #${deletedKill.killerId} score ${killerBeforeDelete.kills}->${killerAfterDelete.kills}; total ${totalBeforeDelete}->${totalBeforeDelete - 1}`)
+  note(results, 9, "Delete log", `killer #${deletedKill.killerId} score ${killerBeforeDelete.kills}->${killerAfterDelete.kills}; total ${totalBeforeDelete}->${totalBeforeDelete - 1}`)
 
   while (state.players.filter((p) => p.alive).length > 1) {
     const scoreboard = getScoreboardMemory(state)
@@ -542,7 +632,7 @@ try {
   assert(survivor.targetId === null, "Last-standing target should be null")
   const mostKills = getScoreboardMemory(state)[0]
   assert(mostKills.kills > 0, "Expected most-kills winner")
-  note(results, 8, "Endgame", `last standing ${survivor.name}; most kills ${mostKills.name} (${mostKills.kills})`)
+  note(results, 10, "Endgame", `last standing ${survivor.name}; most kills ${mostKills.name} (${mostKills.kills})`)
 
   writeReport(results, bugs)
   if (results.some((r) => !r.pass)) {

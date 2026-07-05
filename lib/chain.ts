@@ -23,6 +23,24 @@ export function shuffle<T>(input: readonly T[]): T[] {
   return a
 }
 
+/**
+ * Pick `n` items from `pool`, spread as evenly as possible. Every item is used
+ * once before any is used twice, twice before any is used three times, and so
+ * on — so usage counts never differ by more than 1 (no random over-use). The
+ * order within each full pass is shuffled. Returns [] for an empty pool.
+ */
+export function distribute<T>(pool: readonly T[], n: number): T[] {
+  const out: T[] = []
+  if (pool.length === 0 || n <= 0) return out
+  while (out.length < n) {
+    for (const item of shuffle(pool)) {
+      if (out.length >= n) break
+      out.push(item)
+    }
+  }
+  return out
+}
+
 export type OrderResult = {
   /** Players in cycle order. order[i] hunts order[(i+1) % n]. */
   order: ChainPerson[]

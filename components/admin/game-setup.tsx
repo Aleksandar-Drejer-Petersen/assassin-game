@@ -3,6 +3,7 @@
 import * as React from "react"
 import { useRef, useState, useTransition } from "react"
 import { bulkAddPlayers, savePools, assignChain, type AssignResult } from "@/app/actions/admin"
+import { CustomChainBuilder } from "@/components/admin/custom-chain-builder"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
@@ -48,6 +49,7 @@ export function GameSetup({
   const wpnCount = pools.weapons.length
   const enoughLoc = locCount >= n
   const enoughWpn = wpnCount >= n
+  const shortfall = n > 0 && (locCount < n || wpnCount < n) && locCount > 0 && wpnCount > 0
 
   function runBuild() {
     setConfirming(false)
@@ -105,14 +107,14 @@ export function GameSetup({
       <Card>
         <CardHeader>
           <CardTitle className="font-display uppercase tracking-wide">2 · Locations &amp; Weapons</CardTitle>
-          <CardDescription>One per line. You need at least {n || "N"} of each (one per student).</CardDescription>
+          <CardDescription>One per line. Aim for at least {n || "N"} of each (one per student). Fewer is fine — they&apos;ll be reused evenly.</CardDescription>
         </CardHeader>
         <CardContent>
           <form action={savePools} className="grid gap-4 sm:grid-cols-2">
             <div className="flex flex-col gap-2">
               <Label className="flex items-center gap-2">
                 <MapPin className="size-4 text-primary" /> Locations / situations
-                <span className={cn("ml-auto text-xs", enoughLoc ? "text-emerald-400" : "text-primary")}>
+                <span className={cn("ml-auto text-xs", enoughLoc ? "text-emerald-400" : "text-amber-400")}>
                   {locCount}/{n || 0}
                 </span>
               </Label>
@@ -121,7 +123,7 @@ export function GameSetup({
             <div className="flex flex-col gap-2">
               <Label className="flex items-center gap-2">
                 <Swords className="size-4 text-primary" /> Weapons / items
-                <span className={cn("ml-auto text-xs", enoughWpn ? "text-emerald-400" : "text-primary")}>
+                <span className={cn("ml-auto text-xs", enoughWpn ? "text-emerald-400" : "text-amber-400")}>
                   {wpnCount}/{n || 0}
                 </span>
               </Label>
@@ -141,7 +143,7 @@ export function GameSetup({
             <Shuffle className="size-5 text-primary" /> 3 · Build the kill chain
           </CardTitle>
           <CardDescription>
-            Assigns one location + weapon to each student and links everyone into a single continuous circle.
+            Randomly links everyone into one continuous circle and spreads the locations + weapons evenly (reusing them if you have fewer than students).
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
@@ -163,6 +165,14 @@ export function GameSetup({
             </Button>
           ) : (
             <div className="flex flex-col gap-3 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3">
+              {shortfall && (
+                <p className="flex items-start gap-2 text-sm text-amber-400">
+                  <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+                  You have {locCount} location{locCount === 1 ? "" : "s"}/situations and {wpnCount} weapon
+                  {wpnCount === 1 ? "" : "s"} for {n} students, so some will repeat (spread evenly). Cancel to add
+                  more, or proceed anyway.
+                </p>
+              )}
               <p className="flex items-start gap-2 text-sm text-amber-400">
                 <AlertTriangle className="mt-0.5 size-4 shrink-0" />
                 This resets the game — the kill log is cleared and everyone is set back to alive. You can undo it from the History tab.
@@ -200,6 +210,9 @@ export function GameSetup({
           )}
         </CardContent>
       </Card>
+
+      {/* Optional: hand-arrange the order instead of auto-assigning */}
+      <CustomChainBuilder players={players} pools={pools} />
     </div>
   )
 }

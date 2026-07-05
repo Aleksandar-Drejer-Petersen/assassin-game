@@ -12,7 +12,7 @@ import {
   destroySession,
   isAuthenticated,
 } from "@/lib/auth"
-import { buildOrder, normalizeGender, shuffle, type ChainPerson } from "@/lib/chain"
+import { buildOrder, distribute, normalizeGender, type ChainPerson } from "@/lib/chain"
 
 async function requireAdmin() {
   if (!(await isAuthenticated())) {
@@ -297,6 +297,34 @@ function parseList(raw: string): string[] {
   return out
 }
 
+/**
+ * Wire the players into one cycle in the given order (orderedIds[i] hunts
+ * orderedIds[i+1], last hunts first), assigning each a location + weapon, and
+ * reset the game (clear kills, everyone alive). Atomic.
+ */
+async function writeChain(orderedIds: number[], locations: string[], weapons: string[]) {
+  const client = await pool.connect()
+  try {
+    await client.query("BEGIN")
+    await client.query("DELETE FROM kills")
+    for (let i = 0; i < orderedIds.length; i++) {
+      const targetId = orderedIds[(i + 1) % orderedIds.length]
+      await client.query(
+        `UPDATE players
+           SET target_id = $1, location = $2, item = $3, alive = true, eliminated_at = NULL
+         WHERE id = $4`,
+        [targetId, locations[i], weapons[i], orderedIds[i]],
+      )
+    }
+    await client.query("COMMIT")
+  } catch (err) {
+    await client.query("ROLLBACK")
+    throw err
+  } finally {
+    client.release()
+  }
+}
+
 async function upsertSetting(key: string, value: unknown) {
   await db
     .insert(settings)
@@ -351,47 +379,76 @@ export async function assignChain(formData: FormData): Promise<AssignResult> {
   if (n < 2) {
     return { ok: false, error: "Add at least 2 players before building the chain." }
   }
-
-  const missing: string[] = []
-  if (locations.length < n) missing.push(`${n - locations.length} more location${n - locations.length === 1 ? "" : "s"}`)
-  if (weapons.length < n) missing.push(`${n - weapons.length} more weapon${n - weapons.length === 1 ? "" : "s"}`)
-  if (missing.length > 0) {
+  if (locations.length === 0 || weapons.length === 0) {
     return {
       ok: false,
-      error: `You have ${n} players, so you need at least ${n} locations and ${n} weapons. Add ${missing.join(" and ")}.`,
+      error: "Add at least one location/situation and one weapon before building the chain.",
     }
   }
 
   const people: ChainPerson[] = roster.map((p) => ({ id: p.id, name: p.name, gender: p.gender }))
   const { order, genderWarning } = buildOrder(people, alternate)
-  const pickedLocations = shuffle(locations).slice(0, n)
-  const pickedWeapons = shuffle(weapons).slice(0, n)
+  // Spread locations & weapons evenly, duplicating as needed when the pool is
+  // smaller than the roster (never a random over-used subset).
+  const pickedLocations = distribute(locations, n)
+  const pickedWeapons = distribute(weapons, n)
 
   await captureSnapshot("Build kill chain")
-
-  const client = await pool.connect()
-  try {
-    await client.query("BEGIN")
-    await client.query("DELETE FROM kills")
-    for (let i = 0; i < order.length; i++) {
-      const person = order[i]
-      const target = order[(i + 1) % order.length]
-      await client.query(
-        `UPDATE players
-           SET target_id = $1, location = $2, item = $3, alive = true, eliminated_at = NULL
-         WHERE id = $4`,
-        [target.id, pickedLocations[i], pickedWeapons[i], person.id],
-      )
-    }
-    await client.query("COMMIT")
-  } catch (err) {
-    await client.query("ROLLBACK")
-    throw err
-  } finally {
-    client.release()
-  }
+  await writeChain(order.map((p) => p.id), pickedLocations, pickedWeapons)
 
   revalidatePath("/admin")
   revalidatePath("/")
   return { ok: true, warning: genderWarning }
+}
+
+/**
+ * Build the chain from an explicit, admin-chosen order (the drag-and-drop
+ * custom chain). `order` is a comma-separated list of player ids that must
+ * include every player exactly once. Locations & weapons are still spread
+ * evenly. Resets the game; snapshot taken first so it can be undone.
+ */
+export async function assignCustomChain(formData: FormData): Promise<AssignResult> {
+  await requireAdmin()
+  await ensureSchema()
+
+  const ids = String(formData.get("order") ?? "")
+    .split(",")
+    .map((s) => Number(s.trim()))
+    .filter((x) => Number.isInteger(x) && x > 0)
+
+  const [roster, locRow, wpnRow] = await Promise.all([
+    db.select().from(players),
+    db.select().from(settings).where(eq(settings.key, "locations")),
+    db.select().from(settings).where(eq(settings.key, "weapons")),
+  ])
+
+  const locations = Array.isArray(locRow[0]?.value)
+    ? (locRow[0]!.value as unknown[]).filter((x): x is string => typeof x === "string")
+    : []
+  const weapons = Array.isArray(wpnRow[0]?.value)
+    ? (wpnRow[0]!.value as unknown[]).filter((x): x is string => typeof x === "string")
+    : []
+
+  const n = ids.length
+  if (n < 2) return { ok: false, error: "Put at least 2 players in the order." }
+  if (new Set(ids).size !== ids.length) {
+    return { ok: false, error: "A player appears twice in the order." }
+  }
+  const rosterIds = new Set(roster.map((p) => p.id))
+  if (n !== roster.length || !ids.every((id) => rosterIds.has(id))) {
+    return { ok: false, error: "The custom order must include every player exactly once." }
+  }
+  if (locations.length === 0 || weapons.length === 0) {
+    return {
+      ok: false,
+      error: "Add at least one location/situation and one weapon before building the chain.",
+    }
+  }
+
+  await captureSnapshot("Build custom kill chain")
+  await writeChain(ids, distribute(locations, n), distribute(weapons, n))
+
+  revalidatePath("/admin")
+  revalidatePath("/")
+  return { ok: true, warning: null }
 }
