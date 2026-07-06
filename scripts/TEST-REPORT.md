@@ -4,9 +4,10 @@
 4. Single cycle: 37/37 nodes, loop closed - PASS
 5. Custom chain: explicit 37-id cycle reproduced; duplicate, missing, and too-short orders rejected - PASS
 6. Gender clashes: 0; warning produced - PASS
-7. Record kills: 20 kills; 17 alive; loop intact after each - PASS
-8. Edit log: kill #11 item/location/notes visible - PASS
-9. Delete log: killer #1 score 3->2; total 20->19 - PASS
-10. Endgame: last standing Adrian Brooks; most kills Adrian Brooks (18) - PASS
+7. Duplicate dead target: P1 killed V once; P2 duplicate attempt was a no-op - PASS
+8. Record kills: 20 kills; 17 alive; loop intact after each - PASS
+9. Edit log: kill #11 item/location/notes visible - PASS
+10. Delete log: killer #1 score 7->6; total 20->19 - PASS
+11. Endgame: last standing Adrian Brooks; most kills Adrian Brooks (22) - PASS
 
 No bugs found.

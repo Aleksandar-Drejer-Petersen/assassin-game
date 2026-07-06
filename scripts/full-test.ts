@@ -263,6 +263,8 @@ function recordKillMemory(
 
   const victim = state.players.find((p) => p.id === killer.targetId)
   if (!victim) return null
+  if (!victim.alive) return null
+
   const killerFormerLocation = killer.location
   const killerFormerItem = killer.item
   const victimFormerTargetId = victim.targetId
@@ -583,6 +585,70 @@ try {
     note(results, 6, "Gender clashes", `${clashes}; warning produced`)
   }
 
+  const doubleKillState = makeState([
+    {
+      id: 1,
+      name: "P1",
+      alive: true,
+      gender: null,
+      targetId: 3,
+      location: "Hallway",
+      item: "Marker",
+      eliminatedAt: null,
+      createdAt: new Date(Date.UTC(2026, 0, 1, 0, 0, 0)),
+    },
+    {
+      id: 2,
+      name: "P2",
+      alive: true,
+      gender: null,
+      targetId: 3,
+      location: "Library",
+      item: "Notebook",
+      eliminatedAt: null,
+      createdAt: new Date(Date.UTC(2026, 0, 1, 0, 0, 0)),
+    },
+    {
+      id: 3,
+      name: "V",
+      alive: true,
+      gender: null,
+      targetId: 4,
+      location: "Courtyard",
+      item: "Compass",
+      eliminatedAt: null,
+      createdAt: new Date(Date.UTC(2026, 0, 1, 0, 0, 0)),
+    },
+    {
+      id: 4,
+      name: "M",
+      alive: true,
+      gender: null,
+      targetId: 1,
+      location: "Lab",
+      item: "Ruler",
+      eliminatedAt: null,
+      createdAt: new Date(Date.UTC(2026, 0, 1, 0, 0, 0)),
+    },
+  ])
+  const p1Kill = recordKillMemory(doubleKillState, { killerId: 1 })
+  assert(p1Kill, "Expected P1 kill to succeed")
+  assert(!playerById(doubleKillState, 3).alive, "V should be dead after P1 kill")
+  assert(playerById(doubleKillState, 1).targetId === 4, "P1 should inherit V's mission")
+  assert(getScoreboardMemory(doubleKillState).find((r) => r.id === 1)?.kills === 1, "P1 should be credited")
+  const killCountBeforeDuplicate = doubleKillState.kills.length
+  const totalKillsBeforeDuplicate = getStatsMemory(doubleKillState).totalKills
+  const p2TargetBeforeDuplicate = playerById(doubleKillState, 2).targetId
+  const p2Kill = recordKillMemory(doubleKillState, { killerId: 2 })
+  assert(p2Kill === null, "Expected P2 duplicate kill to be a no-op")
+  assert(!playerById(doubleKillState, 3).alive, "V should remain dead")
+  assert(doubleKillState.kills.filter((k) => k.victimId === 3).length === 1, "V should have exactly one kill row")
+  assert(getScoreboardMemory(doubleKillState).find((r) => r.id === 2)?.kills === 0, "P2 score should stay 0")
+  assert(doubleKillState.kills.length === killCountBeforeDuplicate, "Duplicate kill should not add a kill row")
+  assert(getStatsMemory(doubleKillState).totalKills === totalKillsBeforeDuplicate, "Duplicate kill should not increase total kills")
+  assert(playerById(doubleKillState, 2).targetId === p2TargetBeforeDuplicate, "P2 target should be unchanged")
+  note(results, 7, "Duplicate dead target", "P1 killed V once; P2 duplicate attempt was a no-op")
+
   const killPlan = [1, 4, 8, 12, 16, 20, 24, 28, 32, 36, 2, 6, 10, 14, 18, 22, 26, 30, 34, 3]
   for (const preferredKillerId of killPlan) {
     const preferred = state.players.find((p) => p.id === preferredKillerId && p.alive && p.targetId != null)
@@ -590,7 +656,7 @@ try {
     assert(killer, "No eligible killer found")
     currentTargetKill(state, killer.id)
   }
-  note(results, 7, "Record kills", `${state.kills.length} kills; ${getStatsMemory(state).aliveCount} alive; loop intact after each`)
+  note(results, 8, "Record kills", `${state.kills.length} kills; ${getStatsMemory(state).aliveCount} alive; loop intact after each`)
 
   const editedKill = state.kills[Math.floor(state.kills.length / 2)]
   assert(editedKill, "Expected a kill to edit")
@@ -606,7 +672,7 @@ try {
   assert(feedItem.item === "Edited Umbrella", "Edited item missing from feed")
   assert(feedItem.location === "Edited Observatory", "Edited location missing from feed")
   assert(feedItem.notes === "Edited notes are visible in the public feed.", "Edited notes missing from feed")
-  note(results, 8, "Edit log", `kill #${editedKill.id} item/location/notes visible`)
+  note(results, 9, "Edit log", `kill #${editedKill.id} item/location/notes visible`)
 
   const deletedKill = state.kills[0]
   assert(deletedKill, "Expected a kill to delete")
@@ -618,7 +684,7 @@ try {
   assert(killerAfterDelete, "Deleted kill killer missing after delete")
   assert(killerAfterDelete.kills === killerBeforeDelete.kills - 1, "Killer score did not drop by 1")
   assert(getStatsMemory(state).totalKills === totalBeforeDelete - 1, "Total kills did not drop by 1")
-  note(results, 9, "Delete log", `killer #${deletedKill.killerId} score ${killerBeforeDelete.kills}->${killerAfterDelete.kills}; total ${totalBeforeDelete}->${totalBeforeDelete - 1}`)
+  note(results, 10, "Delete log", `killer #${deletedKill.killerId} score ${killerBeforeDelete.kills}->${killerAfterDelete.kills}; total ${totalBeforeDelete}->${totalBeforeDelete - 1}`)
 
   while (state.players.filter((p) => p.alive).length > 1) {
     const scoreboard = getScoreboardMemory(state)
@@ -633,7 +699,7 @@ try {
   assert(survivor.targetId === null, "Last-standing target should be null")
   const mostKills = getScoreboardMemory(state)[0]
   assert(mostKills.kills > 0, "Expected most-kills winner")
-  note(results, 10, "Endgame", `last standing ${survivor.name}; most kills ${mostKills.name} (${mostKills.kills})`)
+  note(results, 11, "Endgame", `last standing ${survivor.name}; most kills ${mostKills.name} (${mostKills.kills})`)
 
   writeReport(results, bugs)
   if (results.some((r) => !r.pass)) {
