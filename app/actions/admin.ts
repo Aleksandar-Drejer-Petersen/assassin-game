@@ -161,7 +161,10 @@ export async function recordKill(formData: FormData) {
   if (!victimId || victimId === killerId) return // killer has no live target
 
   const [victim] = await db.select().from(players).where(eq(players.id, victimId))
-  if (!victim) return
+  // Guard: a player can only be killed once. If the killer's target is already
+  // dead (e.g. two hunters ended up on the same target after a mid-game edit),
+  // refuse — fix the killer's target instead.
+  if (!victim || !victim.alive) return
 
   const item = killer.item
   const location = killer.location

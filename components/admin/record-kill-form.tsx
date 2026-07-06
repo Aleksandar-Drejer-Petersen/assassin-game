@@ -25,7 +25,7 @@ export function RecordKillForm({ players }: { players: PlayerRow[] }) {
   const killer = alive.find((p) => String(p.id) === killerId)
   const killerName = killer?.name
   const target = killer?.targetId != null ? players.find((p) => p.id === killer.targetId) : undefined
-  const canRecord = Boolean(killer && target)
+  const canRecord = Boolean(killer && target && target.alive)
 
   return (
     <Card>
@@ -70,11 +70,16 @@ export function RecordKillForm({ players }: { players: PlayerRow[] }) {
 
           {killer && (
             <div className="rounded-lg border border-border bg-muted/30 p-3 text-sm sm:col-span-2">
-              {target ? (
+              {target && target.alive ? (
                 <p>
                   → eliminates <b>{target.name}</b>
                   {killer.item ? ` · ${killer.item}` : ""}
                   {killer.location ? ` @ ${killer.location}` : ""}
+                </p>
+              ) : target && !target.alive ? (
+                <p className="text-amber-400">
+                  → their target <b>{target.name}</b> was already eliminated. Update {killer.name}&apos;s target in
+                  the Roster tab before recording.
                 </p>
               ) : (
                 <p>→ no current target (already won, or the chain isn&apos;t built yet)</p>
