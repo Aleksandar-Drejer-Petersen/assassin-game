@@ -45,12 +45,22 @@ export function Poster() {
       </div>
 
       <style jsx global>{`
+        /* Screen stays dark & cool. When printing, flip to black-on-white so it
+           uses almost no ink: white background, black title/QR/icon, thin frame. */
         @media print {
           body {
-            background: white;
+            background: white !important;
           }
           .poster {
-            border: none !important;
+            background: white !important;
+            color: black !important;
+            border: 1px solid black !important;
+            box-shadow: none !important;
+            aspect-ratio: auto;
+            min-height: 92vh;
+          }
+          .poster * {
+            color: black !important;
           }
         }
       `}</style>
