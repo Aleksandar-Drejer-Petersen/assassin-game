@@ -43,7 +43,7 @@ export default async function HomePage() {
         </Card>
       ) : null}
 
-      <StatsBar stats={stats} />
+      <StatsBar stats={stats} recentKill={kills[0]} />
 
       <div className="mt-6 grid gap-6 lg:grid-cols-[1fr_1.2fr]">
         <div className="flex flex-col gap-6">
