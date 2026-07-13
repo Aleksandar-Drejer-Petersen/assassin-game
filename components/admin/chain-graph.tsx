@@ -169,7 +169,12 @@ export function ChainGraph({ chain }: { chain: ChainView }) {
                   const p = pos[i]
                   const anchor = Math.cos(p.a) > 0.2 ? "start" : Math.cos(p.a) < -0.2 ? "end" : "middle"
                   const lx = CX + (RADIUS + 14) * Math.cos(p.a)
-                  const ly = CY + (RADIUS + 14) * Math.sin(p.a)
+                  // Near the top/bottom of the circle labels are centered and
+                  // neighbours sit at almost the same height — stagger them in
+                  // alternating rows so long names don't overlap.
+                  const stagger =
+                    anchor === "middle" ? (i % 2 === 0 ? 12 : 26) * (Math.sin(p.a) >= 0 ? 1 : -1) : 0
+                  const ly = CY + (RADIUS + 2) * Math.sin(p.a) + stagger
                   return (
                     <g key={`n-${l.id}`}>
                       <circle cx={p.x} cy={p.y} r={6} fill={genderColor(l.gender)} />
