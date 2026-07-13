@@ -6,9 +6,13 @@ import { Button } from "@/components/ui/button"
 import type { ChainView } from "@/lib/game"
 import { AlertTriangle, FileDown, Trophy, Skull } from "lucide-react"
 
-const SIZE = 440
-const CENTER = SIZE / 2
-const RADIUS = SIZE / 2 - 64
+// Wider than tall so long names beside the circle don't get clipped at the
+// viewBox edge — the circle stays centered, the extra width is label room.
+const WIDTH = 760
+const HEIGHT = 440
+const CX = WIDTH / 2
+const CY = HEIGHT / 2
+const RADIUS = HEIGHT / 2 - 64
 
 function genderColor(g: string | null) {
   if (g === "M") return "var(--color-sky-400, #38bdf8)"
@@ -45,7 +49,7 @@ export function ChainGraph({ chain }: { chain: ChainView }) {
   const indexById = new Map(links.map((l, i) => [l.id, i]))
   const pos = links.map((_, i) => {
     const a = -Math.PI / 2 + (i * 2 * Math.PI) / n
-    return { x: CENTER + RADIUS * Math.cos(a), y: CENTER + RADIUS * Math.sin(a), a }
+    return { x: CX + RADIUS * Math.cos(a), y: CY + RADIUS * Math.sin(a), a }
   })
 
   const downloadMissionList = () => {
@@ -126,8 +130,8 @@ export function ChainGraph({ chain }: { chain: ChainView }) {
           )}
 
           {n > 1 && (
-            <div className="mx-auto w-full max-w-[440px]">
-              <svg viewBox={`0 0 ${SIZE} ${SIZE}`} className="h-auto w-full text-muted-foreground">
+            <div className="mx-auto w-full max-w-[760px]">
+              <svg viewBox={`0 0 ${WIDTH} ${HEIGHT}`} className="h-auto w-full text-muted-foreground">
                 <defs>
                   <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
                     <path d="M0,0 L10,5 L0,10 z" fill="var(--color-primary, #ef4444)" />
@@ -164,8 +168,8 @@ export function ChainGraph({ chain }: { chain: ChainView }) {
                 {links.map((l, i) => {
                   const p = pos[i]
                   const anchor = Math.cos(p.a) > 0.2 ? "start" : Math.cos(p.a) < -0.2 ? "end" : "middle"
-                  const lx = CENTER + (RADIUS + 14) * Math.cos(p.a)
-                  const ly = CENTER + (RADIUS + 14) * Math.sin(p.a)
+                  const lx = CX + (RADIUS + 14) * Math.cos(p.a)
+                  const ly = CY + (RADIUS + 14) * Math.sin(p.a)
                   return (
                     <g key={`n-${l.id}`}>
                       <circle cx={p.x} cy={p.y} r={6} fill={genderColor(l.gender)} />
