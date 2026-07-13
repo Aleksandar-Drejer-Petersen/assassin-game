@@ -2,8 +2,9 @@
 
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
 import type { ChainView } from "@/lib/game"
-import { AlertTriangle, Trophy, Skull } from "lucide-react"
+import { AlertTriangle, FileDown, Trophy, Skull } from "lucide-react"
 
 const SIZE = 440
 const CENTER = SIZE / 2
@@ -13,6 +14,15 @@ function genderColor(g: string | null) {
   if (g === "M") return "var(--color-sky-400, #38bdf8)"
   if (g === "F") return "var(--color-pink-400, #f472b6)"
   return "currentColor"
+}
+
+function escapeHtml(value: string) {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;")
 }
 
 export function ChainGraph({ chain }: { chain: ChainView }) {
@@ -38,14 +48,66 @@ export function ChainGraph({ chain }: { chain: ChainView }) {
     return { x: CENTER + RADIUS * Math.cos(a), y: CENTER + RADIUS * Math.sin(a), a }
   })
 
+  const downloadMissionList = () => {
+    const now = new Date()
+    const displayDate = new Intl.DateTimeFormat("en-GB", {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+    }).format(now)
+    const filenameDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`
+    const missionLines = links
+      .map((l) => {
+        if (!l.targetName) return null
+        const item = l.item?.trim()
+        const location = l.location?.trim()
+        return `<p><b>${escapeHtml(l.name)}</b> hunts <b>${escapeHtml(l.targetName)}</b>${item ? ` &middot; ${escapeHtml(item)}` : ""}${location ? ` @ ${escapeHtml(location)}` : ""}</p>`
+      })
+      .filter(Boolean)
+      .join("")
+    const html = `<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Assassins - Kill Missions</title>
+  <style>
+    body { background: #fff; color: #000; font-family: Arial, Helvetica, sans-serif; font-size: 12pt; }
+    h1 { font-size: 16pt; margin: 0 0 18pt; }
+    p { margin: 0 0 10pt; }
+  </style>
+</head>
+<body>
+  <h1>Assassins &mdash; Kill Missions ${escapeHtml(displayDate)}</h1>
+  ${missionLines}
+</body>
+</html>`
+    const blob = new Blob([html], { type: "application/msword" })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement("a")
+    a.href = url
+    a.download = `assassins-missions-${filenameDate}.doc`
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    URL.revokeObjectURL(url)
+  }
+
   return (
     <div className="flex flex-col gap-6">
       <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 font-display uppercase tracking-wide">
-            Live kill chain
-            {n === 1 && <Trophy className="size-5 text-amber-400" />}
-          </CardTitle>
+        <CardHeader className="gap-3">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <CardTitle className="flex items-center gap-2 font-display uppercase tracking-wide">
+              Live kill chain
+              {n === 1 && <Trophy className="size-5 text-amber-400" />}
+            </CardTitle>
+            {n >= 2 && (
+              <Button variant="outline" onClick={downloadMissionList} className="w-fit">
+                <FileDown className="size-4" />
+                Download mission list
+              </Button>
+            )}
+          </div>
           <CardDescription>
             {n === 1
               ? "One survivor left — the last one standing."
